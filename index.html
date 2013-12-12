@@ -1,0 +1,868 @@
+<!doctype html>
+<html lang="en">
+
+    <head>
+        <meta charset="utf-8">
+
+        <title>How to automatize your infrastructure with Chef?</title>
+
+        <meta name="description" content="How to automatize your infrastructure with Chef?"/>
+        <meta name="author" content="Grégoire pineau"/>
+
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+        <link rel="stylesheet" href="css/reveal.min.css">
+        <link rel="stylesheet" href="css/theme/solarized.css">
+
+        <!-- Custom -->
+        <link rel="stylesheet" href="assets/css/solarized.css">
+
+        <!-- For syntax highlighting -->
+        <link rel="stylesheet" href="assets/css/solarized-light-highlight.css">
+
+        <!-- If the query includes 'print-pdf', use the PDF print sheet -->
+        <script>
+            document.write( '<link rel="stylesheet" href="css/print/' + ( window.location.search.match( /print-pdf/gi ) ? 'pdf' : 'paper' ) + '.css" type="text/css" media="print">' );
+        </script>
+
+        <!--[if lt IE 9]>
+        <script src="lib/js/html5shiv.js"></script>
+        <![endif]-->
+    </head>
+
+    <body>
+
+        <div class="sl-bar"></div>
+        <div class="reveal">
+
+            <!-- Any section element inside of this container is displayed as a slide -->
+            <div class="slides">
+<section id="how-to-automate-infrastructure-with-chef" class="slide level1">
+<h1>How to automate infrastructure with Chef?</h1>
+<p>Grégoire Pineau - SymfonyCon - Warsaw 2013</p>
+</section>
+<section class="slide level1">
+
+<h2 id="why-do-you-need-to-automate-everything">Why do you need to automate everything?</h2>
+</section>
+<section class="slide level1">
+
+<h3 id="from-where-do-you-use-to-deploy">From where do you use to deploy?</h3>
+<ul>
+<li class="fragment">from your computer</li>
+<li class="fragment">from a staging</li>
+<li class="fragment">from a preprod</li>
+<li class="fragment">from a dedicated server</li>
+<li class="fragment">directly in production</li>
+<li class="fragment">...</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="some-years-ago...">Some years ago...</h3>
+<p>Install</p>
+<pre class="sourceCode bash"><code class="sourceCode bash">$ <span class="kw">git</span> clone git@mycompany.com:project</code></pre>
+<p>Or update</p>
+<pre class="sourceCode bash"><code class="sourceCode bash">$ <span class="kw">git</span> fetch -t</code></pre>
+<p>Then</p>
+<pre class="sourceCode bash"><code class="sourceCode bash"><span class="kw">git</span> checkout -q -f v1.0.0
+
+<span class="kw">php</span> symfony build:all --all --no-confirmation
+<span class="kw">php</span> symfony plugin:install
+<span class="kw">php</span> symfony projects:fix-perms
+<span class="kw">php</span> symfony clear:cache
+
+<span class="kw">rsync</span> -azCcv --delete --dry-run . www-data@project.com:/var/www/project</code></pre>
+</section>
+<section class="slide level1">
+
+<h3 id="and-now">And now?</h3>
+<pre class="sourceCode bash"><code class="sourceCode bash"><span class="kw">git</span> checkout -q -f v1.0.0
+
+<span class="kw">php</span> composer.phar install --optimize-autoloader
+<span class="kw">bowser</span> install
+
+<span class="kw">grunt</span> build
+
+<span class="kw">php</span> app/console assetic:dump
+
+<span class="kw">rsync</span> -azCcv --delete --dry-run . prod:/var/www/project
+
+<span class="kw">ssh</span> prod php /var/www/project/app/console --env=<span class="st">&quot;prod&quot;</span> clear:cache
+<span class="kw">ssh</span> prod php /var/www/project/app/console --env=<span class="st">&quot;prod&quot;</span> doctrine:migrations:migrate</code></pre>
+</section>
+<section class="slide level1">
+
+<h3 id="there-are-a-few-issues-here">There are a few issues here!</h3>
+<p>Actually, all theses issue are not related to manual deployment. But theses can be easily catch and treat with automation.</p>
+<ul>
+<li class="fragment"><code>composer install</code> can fail because:
+<ul>
+<li class="fragment">github is down</li>
+<li class="fragment">satis is down</li>
+</ul></li>
+<li class="fragment"><code>bower install</code> can fail because:
+<ul>
+<li class="fragment">github is down</li>
+</ul></li>
+<li class="fragment">Doctrine migrations can fail</li>
+<li class="fragment">It is hard to rollback</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="you-need-to-automate-all-theses-steps-and-catch-failures">You need to automate all theses steps and catch failures !!!</h3>
+</section>
+<section class="slide level1">
+
+<h2 id="some-numbers">Some numbers:</h2>
+</section>
+<section class="slide level1">
+
+<h3 id="survey-from-puppetlabs">Survey from puppetlabs</h3>
+<ul>
+<li class="fragment">Deploy frequency <strong>on demand</strong>:
+<ul>
+<li class="fragment"><strong>8%</strong> =&gt; without automated toolchain</li>
+<li class="fragment"><strong>27%</strong> =&gt; with automated toolchain</li>
+</ul></li>
+<li class="fragment">Mean time to recover <strong>&lt; 1 hour</strong>:
+<ul>
+<li class="fragment"><strong>17%</strong> =&gt; without automated toolchain</li>
+<li class="fragment"><strong>47%</strong> =&gt; with automated toolchain</li>
+</ul></li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="amazon">Amazon</h3>
+<ul>
+<li class="fragment">May 2011 Deployment Stats:</li>
+<li class="fragment">Production hosts</li>
+<li class="fragment">11.6 seconds: Mean time between deployments (weekday)</li>
+<li class="fragment">1,079: Max # of deployments in a single hour</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="etsy">Etsy</h3>
+<ul>
+<li class="fragment">196 differents people deployed to prod</li>
+<li class="fragment">25 deploys per day</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="github">Github</h3>
+<ul>
+<li class="fragment">50 deploys per day</li>
+<li class="fragment">busiest day yet, Aug. 23, 563 builds and 175 deploys.</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="sensiolabs">SensioLabs</h3>
+<ul>
+<li class="fragment">symfony.com: 1 deploy every 15 minutes</li>
+<li class="fragment">insight.sensiolabs.com: 1-10 deploy each days</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="facebook">Facebook</h3>
+<blockquote>
+<p>At some point you have to deal with reality. You can postpone automation for a long time and make your life really, really difficult. But at some point your life goes from difficult to impossible.</p>
+</blockquote>
+<p>Phil Dibowitz, Production Engineer at Facebook</p>
+</section>
+<section class="slide level1">
+
+<h3 id="conclusion">Conclusion</h3>
+<ul>
+<li class="fragment">automate deploys</li>
+<li class="fragment">deploy small changset</li>
+<li class="fragment">deploy often</li>
+<li class="fragment">deploy everything by using feature flags</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="tips-feature-flags-usage">Tips: Feature flags / usage</h3>
+<p>Hide features before they are totally ready.</p>
+<p>In our templates:</p>
+<pre class="jinja"><code>{% if is_granted(&#39;FEATURE_SECRET&#39;) }
+    &lt;a href=&quot;#...&quot;&gt;&lt;/a&gt;
+{% endif %}</code></pre>
+<p>In our controllers:</p>
+<pre class="sourceCode php"><code class="sourceCode php">public function secretAction()
+{
+    if (!$this-&gt;get(&#39;security.context&#39;)-&gt;isGranted(&#39;FEATURE_SECRET&#39;)) {
+        throw new AccessDeniedException(&#39;You are not allowed to see this feature.&#39;);
+    }
+}</code></pre>
+</section>
+<section class="slide level1">
+
+<h3 id="tips-feature-flags-implementation">Tips: Feature flags / implementation</h3>
+<pre class="sourceCode xml"><code class="sourceCode xml"><span class="co">&lt;!-- service.xml --&gt;</span>
+<span class="kw">&lt;service</span><span class="ot"> id=</span><span class="st">&quot;awesome.feature_hierarchy.voter&quot;</span><span class="ot"> class=</span><span class="st">&quot;%security.access.role_hierarchy_voter.class%&quot;</span><span class="kw">&gt;</span>
+    <span class="kw">&lt;argument</span><span class="ot"> type=</span><span class="st">&quot;service&quot;</span><span class="ot"> id=</span><span class="st">&quot;security.role_hierarchy&quot;</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;argument&gt;</span>FEATURE_<span class="kw">&lt;/argument&gt;</span>
+    <span class="kw">&lt;tag</span><span class="ot"> name=</span><span class="st">&quot;security.voter&quot;</span> <span class="kw">/&gt;</span>
+<span class="kw">&lt;/service&gt;</span></code></pre>
+<pre class="sourceCode php"><code class="sourceCode php">// class User implement UserInterface
+public function getRoles()
+{
+    if ($this-&gt;isAdmin) {
+        return array(&#39;ROLE_ADMIN&#39;, &#39;FEATURE_BETA&#39;);
+    }
+
+    return array(&#39;ROLE_USER&#39;, &#39;FEATURE_PROD&#39;);
+}</code></pre>
+<pre class="sourceCode yaml"><code class="sourceCode yaml"><span class="co"># security.yml</span>
+<span class="fu">role_hierarchy:</span>
+    <span class="fu">ROLE_ADMIN:</span> ROLE_USER
+    <span class="fu">FEATURE_BETA:</span> FEATURE_PROD, FEATURE_SECRET
+    <span class="fu">FEATURE_PROD:</span> FEATURE_FOO, FEATURE_BAR</code></pre>
+</section>
+<section class="slide level1">
+
+<h3 id="tips-feature-flags-release-the-feature">Tips: Feature flags / release the feature</h3>
+<pre class="sourceCode diff"><code class="sourceCode diff"># security.yml
+role_hierarchy:
+    ROLE_ADMIN: ROLE_USER
+<span class="st">-   FEATURE_BETA: FEATURE_PROD, FEATURE_SECRET</span>
+<span class="st">-   FEATURE_PROD: FEATURE_FOO, FEATURE_BAR</span>
+<span class="ot">+   FEATURE_BETA: FEATURE_PROD</span>
+<span class="ot">+   FEATURE_PROD: FEATURE_FOO, FEATURE_BAR, FEATURE_SECRET</span></code></pre>
+<p>More information: <a href="http://marc.weistroff.net/2012/01/09/simple-feature-flags-symfony2">Feature Flags With Symfony2</a></p>
+</section>
+<section class="slide level1">
+
+<h2 id="how-to-automate-everything">How to automate everything?</h2>
+</section>
+<section class="slide level1">
+
+<h3 id="shell-script">Shell script</h3>
+<p>Just copy what you used to do to deploy inside a shell script</p>
+<ul>
+<li class="fragment">But this does not handle failure, we have to deal with it</li>
+<li class="fragment">This is hard to maintain</li>
+<li class="fragment">There is not builtin / open-source template =&gt; you have to create everything</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="fabric-python"><a href="http://docs.fabfile.org/en/1.8/">Fabric</a> (python)</h3>
+<blockquote>
+<p>Fabric is a Python (2.5 or higher) library and command-line tool for streamlining the use of SSH for application deployment or systems administration tasks.</p>
+</blockquote>
+<p>So it is:</p>
+<ul>
+<li class="fragment">basically a process manager</li>
+<li class="fragment">ssh wrapper</li>
+<li class="fragment">very flexible</li>
+<li class="fragment"><strong>not a framework</strong></li>
+<li class="fragment">useful to deploy or install</li>
+<li class="fragment">python ☺</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<pre class="sourceCode python"><code class="sourceCode python"><span class="co"># fabfile.py</span>
+<span class="co"># ...</span>
+
+<span class="kw">def</span> install():
+    sudo(<span class="st">&#39;mkdir -p &#39;</span> + path)
+    <span class="kw">with</span> cd(path):
+        sudo(<span class="st">&#39;git clone &#39;</span> + repo + <span class="st">&#39; .&#39;</span>)
+        sudo(<span class="st">&#39;composer install --dev&#39;</span>)
+        sudo(<span class="st">&#39;php app/console doctrine:database:create&#39;</span>)
+        sudo(<span class="st">&#39;php app/console doctrine:migrations:migrate --no-interaction&#39;</span>)
+
+<span class="kw">def</span> update():
+    <span class="kw">with</span> cd(path):
+        sudo(<span class="st">&#39;git fetch&#39;</span>)
+        sudo(<span class="st">&#39;git reset --hard origin/prod&#39;</span>)
+        sudo(<span class="st">&#39;composer install&#39;</span>)
+        sudo(<span class="st">&#39;php app/console doctrine:migrations:migrate --no-interaction&#39;</span>)</code></pre>
+<p>Then:</p>
+<ul>
+<li class="fragment"><code>fab prod update</code> to deploy</li>
+<li class="fragment"><code>fab localhost install</code> to install the project on our laptop</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="capistrano-capifony"><a href="http://capifony.org/">Capistrano</a> / Capifony</h3>
+<ul>
+<li class="fragment">Capifony is a tool build on top of Capistrano and specialized for Symfony</li>
+<li class="fragment"><strong>A framework</strong> for application deployment</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<pre class="sourceCode ruby"><code class="sourceCode ruby"><span class="co"># deploy.rb</span>
+
+set   <span class="st">:application</span>,   <span class="st">&quot;My App&quot;</span>
+set   <span class="st">:deploy_to</span>,     <span class="st">&quot;/var/www/my-app.com&quot;</span>
+set   <span class="st">:domain</span>,        <span class="st">&quot;my-app.com&quot;</span>
+
+set   <span class="st">:scm</span>,           <span class="st">:git</span>
+set   <span class="st">:repository</span>,    <span class="st">&quot;ssh-gitrepo-domain.com:/path/to/repo.git&quot;</span>
+
+role  <span class="st">:web</span>,           domain
+role  <span class="st">:app</span>,           domain, <span class="st">:primary</span> =&gt; <span class="dv">true</span>
+
+set   <span class="st">:use_sudo</span>,      <span class="dv">false</span>
+set   <span class="st">:keep_releases</span>, <span class="dv">3</span></code></pre>
+<p>Then run:</p>
+<pre><code>cap deploy</code></pre>
+</section>
+<section class="slide level1">
+
+<h3 id="conclusion-1">Conclusion</h3>
+<ul>
+<li class="fragment">Capifony is better to
+<ul>
+<li class="fragment">deploy if you want something simple</li>
+</ul></li>
+<li class="fragment">Fabric is better to:
+<ul>
+<li class="fragment">migrate shell script to something more maintainable</li>
+<li class="fragment">create maintenance tasks (db export, run symfony command, clean log, ...)</li>
+<li class="fragment">create a very custom deploy process</li>
+</ul></li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h2 id="but">But</h2>
+<figure>
+<img src="assets/deeper.jpg" />
+</figure>
+</section>
+<section class="slide level1">
+
+<ul>
+<li class="fragment">Now we have tools to automate:
+<ul>
+<li class="fragment">recurrent tasks</li>
+<li class="fragment">punctual tasks ; yes, this too</li>
+<li class="fragment">deploy</li>
+</ul></li>
+<li class="fragment">But we also need tools to automate infrastructure:
+<ul>
+<li class="fragment">Because I want the same PHP version on all my machines</li>
+<li class="fragment">Because I want the same nginx version on all my machines</li>
+<li class="fragment">...</li>
+</ul></li>
+<li class="fragment">So I can choose:
+<ul>
+<li class="fragment"><a href="https://github.com/ansible/ansible">Ansible</a></li>
+<li class="fragment"><a href="http://puppetlabs.com/">Puppet</a></li>
+<li class="fragment"><a href="http://www.opscode.com/chef/">Chef</a></li>
+<li class="fragment"><a href="http://www.saltstack.com/">Saltstack</a></li>
+<li class="fragment"><a href="http://cfengine.com/">Cfengine</a></li>
+</ul></li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h2 id="chef">Chef</h2>
+</section>
+<section class="slide level1">
+
+<h3 id="what-is-chef">What is Chef?</h3>
+<blockquote>
+<p>Chef is built to address the hardest infrastructure challenges on the planet. By modeling IT infrastructure and application delivery as code, Chef provides the power and flexibility to compete in the digital economy.</p>
+</blockquote>
+</section>
+<section class="slide level1">
+
+<figure>
+<img src="assets/wat.jpg" />
+</figure>
+</section>
+<section class="slide level1">
+
+<h3 id="what-is-chef-my-vision">What is Chef / My vision</h3>
+<ul>
+<li class="fragment">Chef is <strong>a framework</strong> (in Ruby).</li>
+<li class="fragment">Chef is <strong>idempotent</strong>.</li>
+<li class="fragment">Chef helps to build new machines.</li>
+<li class="fragment">Chef helps to update existing machines.</li>
+<li class="fragment">Chef helps to <strong>keep a history</strong> of all modifications in infrastructure.</li>
+<li class="fragment">Chef helps to deploy.</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="how-to-test-chef">How to test chef:</h3>
+<ul>
+<li class="fragment">In a virtual machine (Vagrant)</li>
+<li class="fragment">In the cloud (EC2, ...)</li>
+<li class="fragment">On our laptop, but it's not a good idea</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="what-is-vagrant">What is <a href="http://www.vagrantup.com/">Vagrant</a>?</h3>
+<blockquote>
+<p>Create and configure lightweight, reproducible, and portable development environments.</p>
+</blockquote>
+<ul>
+<li class="fragment">Vagrant is a tools able to boot and provision VM.</li>
+<li class="fragment">It supports different providers VirtualBox, VMWare, LXC, dockr, ...</li>
+<li class="fragment"><p>Try it with:</p>
+<pre class="sourceCode bash"><code class="sourceCode bash">$ <span class="kw">vagrant</span> box add base http://files.vagrantup.com/lucid32.box
+$ <span class="kw">vagrant</span> init
+$ <span class="kw">vagrant</span> up</code></pre></li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="with-vagrant">With vagrant:</h3>
+<ul>
+<li class="fragment">you can have the <strong>same</strong> environment from developer's to production's machine</li>
+<li class="fragment">you can test new PHP versions</li>
+<li class="fragment">you can add a new developer on our project very fast</li>
+<li class="fragment">...</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="but-vagrant">But vagrant:</h3>
+<ul>
+<li class="fragment">is slow</li>
+<li class="fragment">but you can <a href="http://www.whitewashing.de/2013/08/19/speedup_symfony2_on_vagrant_boxes.html">tweak it</a></li>
+<li class="fragment">does not include provisioning =&gt; Chef.</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="tips-vagrant-1">Tips: Vagrant #1</h3>
+<ul>
+<li class="fragment">Make sure that vagrant version is up to date</li>
+<li class="fragment">If you use virtualbox, make sure that the host and the guest share the same version of VirtualBox Guest additions (there's a vagrant plugin for that)</li>
+<li class="fragment">You can find lot boxes here: <a href="http://www.vagrantbox.es/">http://www.vagrantbox.es/</a></li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="how-does-chef-work">How does Chef work?</h3>
+<ul>
+<li class="fragment">Chef needs a chef server
+<ul>
+<li class="fragment">This server knows the state of each machine, called <code>node</code>.</li>
+<li class="fragment">You can use opscode's one</li>
+<li class="fragment">You can host our own</li>
+</ul></li>
+<li class="fragment"><p>Chef (<code>chef-client</code>) need to be installed on the target machine. (Prod, preprod, vm, ...)</p>
+<pre class="sourceCode bash"><code class="sourceCode bash"><span class="ot">$curl</span> <span class="kw">-L</span> https://www.opscode.com/chef/install.sh <span class="kw">|</span> <span class="kw">bash</span></code></pre></li>
+<li class="fragment"><p>Then run <code>chef-client</code> on the node you want to update</p></li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="chef-solo">Chef solo</h3>
+<p>But chef can also work in a standalone mode with <code>chef-solo</code>. So in this case, <code>chef-solo</code> doest not need a chef server. Every <code>cookbook</code> should be inside the <code>node</code>.</p>
+</section>
+<section class="slide level1">
+
+<h3 id="chef-client">Chef client</h3>
+<ul>
+<li class="fragment">When you run <code>chef-client</code> on a <code>node</code>, chef will
+<ol type="1">
+<li class="fragment">Fetch the latest <code>cookbook</code>s from the Chef Server</li>
+<li class="fragment">Execute a run list</li>
+</ol></li>
+<li class="fragment">A run list is a list of <code>cookbook</code>s (<code>nginx</code>, <code>php</code>) to execute</li>
+<li class="fragment">A <code>cookbook</code> is a list of <code>recipe</code>s (<code>php[default]</code>, <code>php[module_gd]</code>, <code>php[module_...]</code>)
+<ul>
+<li class="fragment">The <code>default</code> recipe is executed by default</li>
+</ul></li>
+<li class="fragment">A <code>recipe</code> define how to install a software, or a module</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="quickstart">Quickstart</h3>
+</section>
+<section class="slide level1">
+
+<h4 id="create-a-new-vm">Create a new VM</h4>
+<p>Create a new VM with vagrant</p>
+<pre class="sourceCode bash"><code class="sourceCode bash">$ <span class="kw">vagrant</span> box add saucy64 http://cloud-images.ubuntu.com/vagrant/saucy/current/saucy-server-cloudimg-amd64-vagrant-disk1.box
+$ <span class="kw">vagrant</span> init
+$ <span class="kw">sed</span> -i <span class="st">&#39;s/&quot;base&quot;/&quot;saucy64&quot;/&#39;</span> Vagrantfile</code></pre>
+</section>
+<section class="slide level1">
+
+<h3 id="tips-vagrant-2">Tips: Vagrant #2</h3>
+<p>If our host is a 32bit plateform and the guest is a 64bits plateform, add this to the <code>Vagrantfile</code>:</p>
+<pre class="sourceCode ruby"><code class="sourceCode ruby">config.vm.provider <span class="st">:virtualbox</span> <span class="kw">do</span> |vb|
+    vb.customize [<span class="st">&quot;modifyvm&quot;</span>, <span class="st">:id</span>, <span class="st">&quot;--ostype&quot;</span>, <span class="st">&quot;Ubuntu_64&quot;</span>]
+<span class="kw">end</span></code></pre>
+</section>
+<section class="slide level1">
+
+<h4 id="boot-the-machine">boot the machine</h4>
+<pre class="sourceCode bash"><code class="sourceCode bash">$ <span class="kw">vagrant</span> up
+$ <span class="kw">vagrant</span> ssh</code></pre>
+</section>
+<section class="slide level1">
+
+<h4 id="install-chef">Install chef</h4>
+<p>To make things easier, we will use <code>chef-solo</code>. So we will not use a Chef Server.</p>
+<pre class="sourceCode bash"><code class="sourceCode bash">$ <span class="kw">sudo</span> su
+$ <span class="kw">cd</span>
+$ <span class="kw">curl</span> -L https://www.opscode.com/chef/install.sh <span class="kw">|</span> <span class="kw">bash</span></code></pre>
+<p><strong>Note:</strong> Chef is already installed in this box.</p>
+</section>
+<section class="slide level1">
+
+<h4 id="init-our-chef-repository">Init our chef repository</h4>
+<p>Download opscode's skeleton:</p>
+<pre class="sourceCode bash"><code class="sourceCode bash">$ <span class="kw">wget</span> http://github.com/opscode/chef-repo/tarball/master
+$ <span class="kw">tar</span> -zxf master <span class="kw">&amp;&amp;</span> <span class="kw">mv</span> opscode-chef-repo* chef-repo <span class="kw">&amp;&amp;</span> <span class="kw">rm</span> master
+$ <span class="kw">cd</span> chef-repo</code></pre>
+<p>It looks like:</p>
+<pre><code>chef-repo
+├── certificates/
+├── chefignore
+├── config/
+├── cookbooks/       &lt;--- most important folder
+├── data_bags/
+├── environments/
+├── LICENSE
+├── Rakefile
+├── README.md
+└── roles/</code></pre>
+</section>
+<section class="slide level1">
+
+<h4 id="community-cookbook">community cookbook</h4>
+<ul>
+<li class="fragment"><a href="http://community.opscode.com/cookbooks">http://community.opscode.com/cookbooks</a></li>
+<li class="fragment">you can download them as vendors, but ...</li>
+<li class="fragment">you can instead fetch them:
+<ul>
+<li class="fragment">with <a href="http://berkshelf.com/">berkshelf</a></li>
+<li class="fragment">with <a href="https://github.com/applicationsonline/librarian-chef">librarian-chef</a></li>
+</ul></li>
+<li class="fragment">(We use the latter)</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h4 id="create-the-first-cookbook">Create the first cookbook</h4>
+<pre class="sourceCode bash"><code class="sourceCode bash">$ <span class="kw">knife</span> cookbook create fortune</code></pre>
+<pre><code>fortune
+├── attributes
+├── definitions
+├── files
+│   └── default
+├── libraries
+├── metadata.rb
+├── providers
+├── README.md
+├── recipes
+│   └── default.rb   &lt;--- most important file
+├── resources
+└── templates
+    └── default</code></pre>
+</section>
+<section class="slide level1">
+
+<h4 id="create-the-first-recipe">Create the first recipe</h4>
+<pre><code># recipes/default.rb
+
+include_recipe &quot;apache2&quot;
+include_recipe &quot;mysql::client&quot;
+include_recipe &quot;mysql::server&quot;
+include_recipe &quot;mysql::ruby&quot;
+include_recipe &quot;php&quot;
+include_recipe &quot;php::module_mysql&quot;
+include_recipe &quot;apache2::mod_php5&quot;
+
+apache_site &quot;default&quot; do
+  enable true
+end
+
+mysql_database fortune do
+  connection ({:host =&gt; &#39;localhost&#39;, :username =&gt; &#39;root&#39;, :password =&gt; node[&#39;mysql&#39;][&#39;server_root_password&#39;]})
+  action :create
+end</code></pre>
+</section>
+<section class="slide level1">
+
+<h4 id="working-with-attributes">Working with attributes</h4>
+<pre class="sourceCode diff"><code class="sourceCode diff"><span class="st">-mysql_database &#39;fortune&#39; do</span>
+<span class="ot">+mysql_database node[&#39;fortune&#39;][&#39;database&#39;] do</span>
+   connection ({:host =&gt; &#39;localhost&#39;, :username =&gt; &#39;root&#39;, :password =&gt; node[&#39;mysql&#39;][&#39;server_root_password&#39;]})
+   action :create
+end</code></pre>
+<p>Let's create an attribute file:</p>
+<pre class="sourceCode ruby"><code class="sourceCode ruby"><span class="co"># attributes/default.rb</span>
+default[<span class="st">&quot;fortune&quot;</span>][<span class="st">&quot;database&quot;</span>] = <span class="st">&quot;fortune&quot;</span>
+default[<span class="st">&quot;fortune&quot;</span>][<span class="st">&quot;ga&quot;</span>] = <span class="st">&quot;GA_123456789&quot;</span></code></pre>
+<p>Now, you can override attributes:</p>
+<ul>
+<li class="fragment">For an environment (prod/preprod)</li>
+<li class="fragment">For a node</li>
+<li class="fragment">For a role (<code>front</code> / <code>api</code> / <code>database</code> / <code>consumer</code> / ...)</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="popular-usefull-cookbook">Popular / Usefull cookbook:</h3>
+<ul>
+<li class="fragment"><code>database</code> + <code>postgresql</code>: Because it's better than mysql ☺</li>
+<li class="fragment"><code>wal_e</code> (https://github.com/house9/wal-e-cookbook)</li>
+<li class="fragment"><code>git</code></li>
+<li class="fragment"><code>nginx</code> + <code>nginx-fastcgi</code></li>
+<li class="fragment"><code>php</code></li>
+<li class="fragment"><code>nodejs</code></li>
+<li class="fragment"><code>python</code></li>
+<li class="fragment"><code>rabbitmq</code></li>
+<li class="fragment"><code>varnish</code></li>
+<li class="fragment"><code>elasticsearch</code> (http://github.com/elasticsearch/cookbook-elasticsearch)</li>
+<li class="fragment"><code>postfix</code></li>
+<li class="fragment"><code>cronwrap</code> (https://github.com/smaftoul/cronwrap)</li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="deploy-with-chef-structure">Deploy with Chef / Structure</h3>
+<pre><code>/var/www/insight/
+├── current -&gt; /var/www/insight/releases/d3fd36569dffda711a2770ea1ccae28d54fb9c11
+├── releases
+│   ├── 43d7d8f9aae517d45c8ca57d96d11e0648171cf9
+│   ├── 52c1593bd2e6ed9496ea063d1d94aa6621b39c37
+│   ├── 981a27a9932767947353d2d8567ca1b0a3f87b13
+│   ├── 9d2f7873d2263f44da730efae9d6dcdbe0ffd430
+│   └── d3fd36569dffda711a2770ea1ccae28d54fb9c11
+└── shared
+    ├── app
+    ├── cached-copy
+    └── vendor</code></pre>
+</section>
+<section class="slide level1">
+
+<h3 id="deploy-with-chef-process">Deploy with Chef / process</h3>
+<p>We use the <code>application</code> cookbook.</p>
+<pre class="sourceCode ruby"><code class="sourceCode ruby">application node[cookbook_name][<span class="st">&#39;app_name&#39;</span>] <span class="kw">do</span>
+  revision node[cookbook_name][<span class="st">&#39;deploy_revision&#39;</span>]
+
+  env_vars_composer = {}
+  env_vars_composer[<span class="st">&quot;DATABASE_NAME&quot;</span>] = node[cookbook_name][<span class="st">&#39;dbname&#39;</span>]
+  env_vars_composer[<span class="st">&quot;DATABASE_USER&quot;</span>] = node[cookbook_name][<span class="st">&#39;dbuser&#39;</span>]
+  env_vars_composer[<span class="st">&quot;DATABASE_PASSWORD&quot;</span>] = node[cookbook_name][<span class="st">&#39;dbpassword&#39;</span>]
+  <span class="co"># ...</span>
+
+  <span class="co"># A this point, the code is not yet checkouted</span>
+  before_deploy <span class="kw">do</span>
+<span class="ot">    %w(</span><span class="st">app/sessions app/logs vendor</span><span class="ot">)</span>.each <span class="kw">do</span> |dir|
+      directory <span class="st">&quot;</span><span class="ot">#{</span>shared_path<span class="ot">}</span><span class="st">/</span><span class="ot">#{</span>dir<span class="ot">}</span><span class="st">&quot;</span> <span class="kw">do</span>
+        owner new_resource.owner
+        action <span class="st">:create</span>
+        recursive <span class="dv">true</span>
+      <span class="kw">end</span>
+    <span class="kw">end</span>
+  <span class="kw">end</span>
+
+  <span class="co"># A this point, the code is checkouted, but not yet deployed</span>
+  before_migrate <span class="kw">do</span>
+    template <span class="st">&quot;</span><span class="ot">#{</span>release_path<span class="ot">}</span><span class="st">/web/maintenance-dist.html&quot;</span> <span class="kw">do</span>
+      source <span class="st">&quot;maintenance.html.erb&quot;</span>
+      user new_resource.owner
+      mode <span class="dv">00644</span>
+      variables(
+        <span class="st">&#39;sitename&#39;</span> =&gt; node[cookbook_name][<span class="st">&#39;app_name&#39;</span>].capitalize
+      )
+    <span class="kw">end</span>
+
+    file <span class="st">&quot;</span><span class="ot">#{</span>release_path<span class="ot">}</span><span class="st">/web/app_dev.php&quot;</span> <span class="kw">do</span>
+      action <span class="st">:delete</span>
+    <span class="kw">end</span>
+
+    execute <span class="st">&quot;bower install&quot;</span> <span class="kw">do</span>
+      environment({
+        <span class="st">&#39;HOME&#39;</span> =&gt; node[<span class="st">&#39;etc&#39;</span>][<span class="st">&#39;passwd&#39;</span>][<span class="st">&#39;insight&#39;</span>][<span class="st">&#39;dir&#39;</span>],
+        <span class="st">&#39;GIT_SSH&#39;</span> =&gt; <span class="st">&quot;</span><span class="ot">#{</span>node[cookbook_name][<span class="st">&#39;app_path&#39;</span>]<span class="ot">}</span><span class="st">/deploy-ssh-wrapper&quot;</span>
+      })
+      cwd release_path
+      user new_resource.owner
+    <span class="kw">end</span>
+
+    bash <span class="st">&quot;copy shared vendors into current release&quot;</span> <span class="kw">do</span>
+      code &lt;&lt;-<span class="kw">EOH</span>
+<span class="ot">cp -pa #{</span>new_resource.shared_path<span class="ot">}/vendor #{</span>new_resource.release_path<span class="ot">}</span>
+<span class="ot">EOH</span>
+<span class="ot">      only_if { ::File.directory?(&quot;#{</span>new_resource.shared_path<span class="ot">}/vendor&quot;) }</span>
+<span class="ot">      user new_resource.owner</span>
+<span class="ot">    end</span>
+
+<span class="ot">    execute &quot;php /opt/composer.phar install --dev --prefer-source --no-interaction --optimize-autoloader&quot; do</span>
+<span class="ot">      environment env_vars_composer</span>
+<span class="ot">      cwd release_path</span>
+<span class="ot">      user new_resource.owner</span>
+<span class="ot">    end</span>
+
+<span class="ot">    execute &quot;php app/console assetic:dump --env=prod --no-debug&quot; do</span>
+<span class="ot">      cwd release_path</span>
+<span class="ot">      user new_resource.owner</span>
+<span class="ot">    end</span>
+
+<span class="ot">    bash &quot;migrate database if needed&quot; do</span>
+<span class="ot">      user new_resource.owner</span>
+<span class="ot">      cwd release_path</span>
+<span class="ot">      code &lt;&lt;-EOH</span>
+<span class="ot">MIGRATION_NEEDED=0</span>
+<span class="ot">DEFAULT_CONNECTION=$(app/console doctrine:migrations:status --show-versions | grep &quot;not migrated&quot; | wc -l)</span>
+<span class="ot">if [ &quot;$DEFAULT_CONNECTION&quot; -ne &quot;0&quot; ]; then</span>
+<span class="ot">MIGRATION_NEEDED=&quot;1&quot;</span>
+<span class="ot">fi</span>
+
+<span class="ot">if [ &quot;$MIGRATION_NEEDED&quot; -ne &quot;0&quot; ]; then</span>
+<span class="ot">cp web/maintenance-dist.html #{</span>node[cookbook_name][<span class="st">&#39;app_path&#39;</span>]<span class="ot">}/current/web/maintenance.html</span>
+<span class="ot">app/console doctrine:migrations:migrate --no-interaction --env=prod --no-debug</span>
+<span class="ot">EXIT_CODE=$?</span>
+<span class="ot">rm #{</span>node[cookbook_name][<span class="st">&#39;app_path&#39;</span>]<span class="ot">}/current/web/maintenance.html</span>
+<span class="ot">echo &#39;#{</span>node[cookbook_name][<span class="st">&#39;metric_prefix&#39;</span>]<span class="ot">}.chef.application.db-migrated.count:1|c&#39; | nc -w 1 -u #{</span>statsd_host<span class="ot">} 8125</span>
+<span class="ot">fi</span>
+<span class="ot">exit $EXIT_CODE</span>
+<span class="ot">EOH</span>
+<span class="ot">      only_if &#39;app/console list --raw | grep &quot;doctrine:migrations:status&quot;&#39;, :user =&gt; new_resource.owner, :cwd =&gt; release_path</span>
+<span class="ot">    end</span>
+<span class="ot">  end</span>
+
+<span class="ot">  symlinks({</span>
+<span class="ot">    &#39;app/sessions&#39; =&gt; &#39;app/sessions&#39;,</span>
+<span class="ot">    &#39;app/logs&#39; =&gt; &#39;app/logs&#39;,</span>
+<span class="ot">  })</span>
+
+<span class="ot">  before_restart do</span>
+<span class="ot">    service &quot;php5-fpm&quot; do</span>
+<span class="ot">      action :restart</span>
+<span class="ot">    end</span>
+<span class="ot">  end</span>
+
+<span class="ot">  after_restart do</span>
+<span class="ot">    bash &quot;Copy installed vendor to shared vendor&quot; do</span>
+<span class="ot">      code &lt;&lt;-EOH</span>
+<span class="ot">cp -pa #{</span>new_resource.release_path<span class="ot">}/vendor #{</span>new_resource.shared_path<span class="ot">}</span>
+<span class="ot">EOH</span>
+<span class="ot">    end</span>
+<span class="ot">  end</span>
+<span class="ot">end</span></code></pre>
+</section>
+<section class="slide level1">
+
+<h3 id="deploy-with-chef---what-to-keep-in-mind">Deploy with Chef - What to keep in mind</h3>
+<ul>
+<li class="fragment">try to cache composer (see <a href="http://tech.m6web.fr/composer-installation-without-github.html">m6web's blogpost</a>)</li>
+<li class="fragment">try to cache bower</li>
+<li class="fragment">use <a href="https://github.com/Incenteev/ParameterHandler">Incenteev/ParameterHandler</a>. Thanks <a href="https://github.com/stof">stof</a>, REALLY !!</li>
+<li class="fragment">move the session outside the cache</li>
+<li class="fragment">don't forget symlinks (<code>app/logs</code>, <code>app/session</code>)</li>
+<li class="fragment">do not share <code>vendor</code>.</li>
+<li class="fragment">do not forgot to restart php-fpm</li>
+<li class="fragment">do not forgot to optimize autoloader <code>composer dump-autoload --optimize</code></li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h3 id="conclusion-2">Conclusion</h3>
+<ul>
+<li class="fragment">Chef helps us deploy <strong>faster and safer</strong></li>
+<li class="fragment">Chef helps create / restore an infra very fast (~20 minutes)</li>
+<li class="fragment">Chef is not easy</li>
+<li class="fragment">Chef is written in ruby</li>
+<li class="fragment">Chef is (IMHO) not mature enough:
+<ul>
+<li class="fragment">the community is small</li>
+<li class="fragment">cookbooks are often broken</li>
+<li class="fragment">you need to sign a CLA to contribute</li>
+<li class="fragment">PRs can stay open for more than 1 year before a first review</li>
+</ul></li>
+</ul>
+</section>
+<section class="slide level1">
+
+<h2 id="big-conclusion">Big conclusion ☺</h2>
+<ul>
+<li class="fragment">Automate EVERYTHING!</li>
+<li class="fragment">with the proper tool</li>
+</ul>
+</section>
+<section id="thanks-questions" class="slide level1">
+<h1>Thanks! Questions?</h1>
+<ul>
+<li class="fragment">Slide are available on <a href="https://github.com/lyrixx/SFCon-Warsaw2013-Automation">github</a></li>
+<li class="fragment">Otherwise:
+<ul>
+<li class="fragment"><a href="http://twitter.com/lyrixx">http://twitter.com/lyrixx</a></li>
+<li class="fragment"><a href="http://github.com/lyrixx">http://github.com/lyrixx</a></li>
+<li class="fragment"><a href="http://blog.lyrixx.info">http://blog.lyrixx.info</a></li>
+</ul></li>
+<li class="fragment">And:
+<ul>
+<li class="fragment"><a href="http://sensiolabs.com/fr/nous_rejoindre/pourquoi_nous_rejoindre.html">We are hiring</a></li>
+</ul></li>
+</ul>
+</section>
+<section id="sources" class="slide level1">
+<h1>Sources:</h1>
+<ul>
+<li class="fragment">http://assets.en.oreilly.com/1/event/60/Velocity%20Culture%20Presentation.pdf</li>
+<li class="fragment">http://www.slideshare.net/beamrider9/continuous-deployment-at-etsy-a-tale-of-two-approaches</li>
+<li class="fragment">https://github.com/blog/1241-deploying-at-github</li>
+<li class="fragment">http://gettingstartedwithchef.com</li>
+</ul>
+</section>
+            </div>
+
+        </div>
+
+        <script src="lib/js/head.min.js"></script>
+        <script src="js/reveal.min.js"></script>
+
+        <script>
+
+            // Full list of configuration options available here:
+            // https://github.com/hakimel/reveal.js#configuration
+            Reveal.initialize({
+                controls: false,
+                progress: true,
+                history: true,
+                center: true,
+
+                width: 1020,
+                height: 700,
+
+                slideNumber: true,
+
+                // theme: Reveal.getQueryHash().theme, // available themes are in /css/theme
+                theme: null, // loaded by <style> element in <head>
+                transition: Reveal.getQueryHash().transition || 'default', // default/cube/page/concave/zoom/linear/fade/none
+
+                // Optional libraries used to extend on reveal.js
+                dependencies: [
+                    { src: 'lib/js/classList.js', condition: function() { return !document.body.classList; } },
+                    { src: 'plugin/markdown/showdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+                    { src: 'plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+                    { src: 'assets/js/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
+                    { src: 'plugin/zoom-js/zoom.js', async: true, condition: function() { return !!document.body.classList; } },
+                    { src: 'plugin/notes/notes.js', async: true, condition: function() { return !!document.body.classList; } }
+                ]
+            });
+
+        </script>
+
+    </body>
+</html>
